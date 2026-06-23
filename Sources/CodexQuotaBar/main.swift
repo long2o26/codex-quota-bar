@@ -35,12 +35,26 @@ struct Snapshot {
 }
 
 final class StatusArt {
-    private let font = NSFont.monospacedSystemFont(ofSize: 10, weight: .semibold)
+    private let font = NSFont.monospacedSystemFont(ofSize: 9, weight: .regular)
+    private let timeFont = NSFont.monospacedDigitSystemFont(ofSize: 8, weight: .regular)
     private let textColor = NSColor.labelColor
+    private let timeColor = NSColor.secondaryLabelColor
     private let mutedColor = NSColor.secondaryLabelColor.withAlphaComponent(0.35)
     private let barSize = NSSize(width: 5, height: 8)
     private let barGap: CGFloat = 2
     private let padding = NSSize(width: 4, height: 1)
+    private let resetTimeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH:mm"
+        formatter.timeZone = .autoupdatingCurrent
+        return formatter
+    }()
+    private let resetDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "M'月'd'日'"
+        formatter.timeZone = .autoupdatingCurrent
+        return formatter
+    }()
 
     func image(for snapshot: Snapshot?) -> NSImage {
         guard let snapshot else {
@@ -69,7 +83,8 @@ final class StatusArt {
     }
 
     private func rowWidth(for limit: Limit) -> CGFloat {
-        textWidth(limit.label) + 6 + barsWidth + 7 + textWidth("\(limit.remaining)%")
+        let resetWidth = resetLabel(for: limit).map { timeTextWidth($0) + 6 } ?? 0
+        return textWidth(limit.label) + 6 + barsWidth + 7 + textWidth("\(limit.remaining)%") + resetWidth
     }
 
     private var barsWidth: CGFloat {
@@ -94,6 +109,10 @@ final class StatusArt {
         x += barsWidth + 7
 
         "\(limit.remaining)%".draw(at: CGPoint(x: x, y: point.y), withAttributes: percentAttrs)
+        x += textWidth("\(limit.remaining)%") + 6
+        if let reset = resetLabel(for: limit) {
+            reset.draw(at: CGPoint(x: x, y: point.y), withAttributes: timeAttrs(color: timeColor))
+        }
     }
 
     private func textImage(_ text: String, color: NSColor) -> NSImage {
@@ -110,8 +129,23 @@ final class StatusArt {
         (text as NSString).size(withAttributes: attrs(color: textColor)).width
     }
 
+    private func timeTextWidth(_ text: String) -> CGFloat {
+        (text as NSString).size(withAttributes: timeAttrs(color: timeColor)).width
+    }
+
     private func attrs(color: NSColor) -> [NSAttributedString.Key: Any] {
         [.font: font, .foregroundColor: color]
+    }
+
+    private func timeAttrs(color: NSColor) -> [NSAttributedString.Key: Any] {
+        [.font: timeFont, .foregroundColor: color]
+    }
+
+    private func resetLabel(for limit: Limit) -> String? {
+        guard let date = limit.resetsAt else { return nil }
+        return limit.windowMinutes >= 1440
+            ? resetDateFormatter.string(from: date)
+            : resetTimeFormatter.string(from: date)
     }
 
     private func color(for remaining: Int) -> NSColor {
@@ -310,13 +344,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 }
 
 func printOnce() -> Int32 {
+    let resetFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd HH:mm"
+        formatter.timeZone = .autoupdatingCurrent
+        return formatter
+    }()
+
     guard let snapshot = QuotaReader().latest() else {
         print("No Codex quota log found")
         return 1
     }
     print(snapshot.title)
     for limit in snapshot.limits {
-        print("\(limit.label): remaining \(limit.remaining)%, used \(limit.used)%")
+        let reset = limit.resetsAt.map { ", reset \(resetFormatter.string(from: $0))" } ?? ""
+        print("\(limit.label): remaining \(limit.remaining)%, used \(limit.used)%\(reset)")
     }
     print("updated: \(snapshot.timestamp)")
     print("source: \(snapshot.sourcePath)")
