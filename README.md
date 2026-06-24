@@ -2,16 +2,17 @@
 
 A tiny macOS menu bar widget for Codex quota.
 
-It reads local Codex session logs from `~/.codex/sessions/**/*.jsonl` and shows a compact menu bar summary:
+It reads local Codex session logs from `~/.codex/sessions/**/*.jsonl` and shows two compact rows:
 
 ```text
-5h:99 7d:81
+5h  [bars]  99%  04:43
+7d  [bars]  81%  6月29日
 ```
 
 - `5h`: short quota window
 - `7d`: weekly quota window
-- text color: green `>60`, orange `20...60`, red `<20`
-- reset time: available in the menu, from `rate_limits.*.resets_at`
+- bars: green `>60`, orange `20...60`, red `<20`
+- right-side time: Codex quota reset time from `rate_limits.*.resets_at`
 
 ## Install
 
@@ -78,8 +79,6 @@ If the menu bar item does not appear, check whether Codex has written quota logs
 ```bash
 ./build/CodexQuotaBar.app/Contents/MacOS/CodexQuotaBar --print-once
 ```
-
-If the item is running but invisible, your menu bar may be crowded or clipped by the MacBook notch. The app keeps the main display intentionally short for this reason.
 
 If there are two menu bar items, quit the temporary build and keep the installed app:
 
