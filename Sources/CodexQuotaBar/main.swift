@@ -35,14 +35,14 @@ struct Snapshot {
 }
 
 final class StatusArt {
-    private let font = NSFont.monospacedSystemFont(ofSize: 8.5, weight: .regular)
-    private let timeFont = NSFont.monospacedDigitSystemFont(ofSize: 7, weight: .regular)
+    private let font = NSFont.monospacedSystemFont(ofSize: 9, weight: .regular)
+    private let timeFont = NSFont.monospacedDigitSystemFont(ofSize: 7.5, weight: .regular)
     private let textColor = NSColor.labelColor
     private let timeColor = NSColor.secondaryLabelColor
     private let mutedColor = NSColor.secondaryLabelColor.withAlphaComponent(0.35)
-    private let barSize = NSSize(width: 3, height: 7)
+    private let barSize = NSSize(width: 4, height: 8)
     private let barGap: CGFloat = 1
-    private let padding = NSSize(width: 2, height: 1)
+    private let padding = NSSize(width: 3, height: 1)
     private let resetTimeFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "HH:mm"
@@ -83,8 +83,8 @@ final class StatusArt {
     }
 
     private func rowWidth(for limit: Limit) -> CGFloat {
-        let resetWidth = resetLabel(for: limit).map { timeTextWidth($0) + 4 } ?? 0
-        return textWidth(limit.label) + 4 + barsWidth + 4 + textWidth("\(limit.remaining)%") + resetWidth
+        let resetWidth = resetLabel(for: limit).map { timeTextWidth($0) + 5 } ?? 0
+        return textWidth(limit.label) + 5 + barsWidth + 5 + textWidth("\(limit.remaining)%") + resetWidth
     }
 
     private var barsWidth: CGFloat {
@@ -97,19 +97,19 @@ final class StatusArt {
         var x = point.x
 
         limit.label.draw(at: CGPoint(x: x, y: point.y), withAttributes: labelAttrs)
-        x += textWidth(limit.label) + 4
+        x += textWidth(limit.label) + 5
 
         let filled = max(0, min(5, Int(ceil(Double(limit.remaining) / 20.0))))
         for i in 0..<5 {
             let rect = NSRect(x: x + CGFloat(i) * (barSize.width + barGap), y: point.y + 2, width: barSize.width, height: barSize.height)
-            let path = NSBezierPath(roundedRect: rect, xRadius: 1.5, yRadius: 1.5)
+            let path = NSBezierPath(roundedRect: rect, xRadius: 2, yRadius: 2)
             (i < filled ? color(for: limit.remaining) : mutedColor).setFill()
             path.fill()
         }
-        x += barsWidth + 4
+        x += barsWidth + 5
 
         "\(limit.remaining)%".draw(at: CGPoint(x: x, y: point.y), withAttributes: percentAttrs)
-        x += textWidth("\(limit.remaining)%") + 4
+        x += textWidth("\(limit.remaining)%") + 5
         if let reset = resetLabel(for: limit) {
             reset.draw(at: CGPoint(x: x, y: point.y), withAttributes: timeAttrs(color: timeColor))
         }
