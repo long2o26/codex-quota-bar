@@ -70,6 +70,7 @@ Uninstall:
 
 - The app is local-only. It reads Codex logs; it does not call OpenAI or GitHub.
 - The number changes after Codex writes a new `token_count` event.
+- The menu bar item has a stable `autosaveName`, so macOS can remember its position after CodexQuotaBar restarts.
 - The app is unsigned. Building from source is the smoothest install path.
 
 ## Troubleshooting
@@ -79,6 +80,8 @@ If the menu bar item does not appear, check whether Codex has written quota logs
 ```bash
 ./build/CodexQuotaBar.app/Contents/MacOS/CodexQuotaBar --print-once
 ```
+
+If the process is running but the item disappears after a CodexQuotaBar restart, macOS may have treated an unnamed status item as a new anonymous menu bar icon and placed it in the hidden area. Current versions set a stable status item name so macOS can keep the item in the visible position after restart.
 
 If there are two menu bar items, quit the temporary build and keep the installed app:
 
