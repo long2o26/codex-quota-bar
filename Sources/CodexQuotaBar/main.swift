@@ -295,6 +295,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        statusItem.autosaveName = "CodexQuotaBarStatusItem"
         statusItem.menu = makeMenu()
         refresh()
         timer = Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { [weak self] _ in
