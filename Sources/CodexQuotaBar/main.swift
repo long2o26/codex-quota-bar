@@ -29,6 +29,11 @@ struct Snapshot {
         return parts.isEmpty ? "Codex --" : parts.joined(separator: "  ")
     }
 
+    var compactTitle: String {
+        let parts = limits.map { "\($0.label):\($0.remaining)" }
+        return parts.isEmpty ? "C--" : parts.joined(separator: " ")
+    }
+
     var worstRemaining: Int? {
         limits.map(\.remaining).min()
     }
@@ -36,13 +41,13 @@ struct Snapshot {
 
 final class StatusArt {
     private let font = NSFont.monospacedSystemFont(ofSize: 9, weight: .regular)
-    private let timeFont = NSFont.monospacedDigitSystemFont(ofSize: 7.5, weight: .regular)
+    private let timeFont = NSFont.monospacedDigitSystemFont(ofSize: 8, weight: .regular)
     private let textColor = NSColor.labelColor
     private let timeColor = NSColor.secondaryLabelColor
     private let mutedColor = NSColor.secondaryLabelColor.withAlphaComponent(0.35)
-    private let barSize = NSSize(width: 4, height: 8)
-    private let barGap: CGFloat = 1
-    private let padding = NSSize(width: 3, height: 1)
+    private let barSize = NSSize(width: 5, height: 8)
+    private let barGap: CGFloat = 2
+    private let padding = NSSize(width: 4, height: 1)
     private let resetTimeFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "HH:mm"
@@ -83,8 +88,8 @@ final class StatusArt {
     }
 
     private func rowWidth(for limit: Limit) -> CGFloat {
-        let resetWidth = resetLabel(for: limit).map { timeTextWidth($0) + 5 } ?? 0
-        return textWidth(limit.label) + 5 + barsWidth + 5 + textWidth("\(limit.remaining)%") + resetWidth
+        let resetWidth = resetLabel(for: limit).map { timeTextWidth($0) + 6 } ?? 0
+        return textWidth(limit.label) + 6 + barsWidth + 7 + textWidth("\(limit.remaining)%") + resetWidth
     }
 
     private var barsWidth: CGFloat {
@@ -97,19 +102,19 @@ final class StatusArt {
         var x = point.x
 
         limit.label.draw(at: CGPoint(x: x, y: point.y), withAttributes: labelAttrs)
-        x += textWidth(limit.label) + 5
+        x += textWidth(limit.label) + 6
 
         let filled = max(0, min(5, Int(ceil(Double(limit.remaining) / 20.0))))
         for i in 0..<5 {
             let rect = NSRect(x: x + CGFloat(i) * (barSize.width + barGap), y: point.y + 2, width: barSize.width, height: barSize.height)
-            let path = NSBezierPath(roundedRect: rect, xRadius: 2, yRadius: 2)
+            let path = NSBezierPath(roundedRect: rect, xRadius: 2.5, yRadius: 2.5)
             (i < filled ? color(for: limit.remaining) : mutedColor).setFill()
             path.fill()
         }
-        x += barsWidth + 5
+        x += barsWidth + 7
 
         "\(limit.remaining)%".draw(at: CGPoint(x: x, y: point.y), withAttributes: percentAttrs)
-        x += textWidth("\(limit.remaining)%") + 5
+        x += textWidth("\(limit.remaining)%") + 6
         if let reset = resetLabel(for: limit) {
             reset.draw(at: CGPoint(x: x, y: point.y), withAttributes: timeAttrs(color: timeColor))
         }
@@ -260,12 +265,28 @@ final class QuotaReader {
     }
 }
 
+enum DisplayMode: String, CaseIterable {
+    case auto
+    case detail
+    case compact
+
+    var title: String {
+        switch self {
+        case .auto: return "Auto"
+        case .detail: return "Detail"
+        case .compact: return "Compact"
+        }
+    }
+}
+
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let reader = QuotaReader()
     private let art = StatusArt()
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private var timer: Timer?
     private var snapshot: Snapshot?
+    private let displayModeDefaultsKey = "displayMode"
+    private let preferredMaxWidth: CGFloat = 110
     private let resetFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "MM-dd HH:mm"
@@ -274,8 +295,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        statusItem.button?.imagePosition = .imageLeft
-        statusItem.button?.imageScaling = .scaleProportionallyDown
         statusItem.menu = makeMenu()
         refresh()
         timer = Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { [weak self] _ in
@@ -286,11 +305,63 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func refresh() {
         snapshot = reader.latest()
         let image = art.image(for: snapshot)
-        statusItem.length = min(image.size.width + 4, 72)
-        statusItem.button?.image = image
-        statusItem.button?.title = " "
+        if resolvedDisplayMode(for: image) == .compact {
+            showCompact()
+        } else {
+            showDetail(image)
+        }
         statusItem.button?.toolTip = snapshot?.title ?? "No Codex quota log found"
         statusItem.menu = makeMenu()
+    }
+
+    private var displayMode: DisplayMode {
+        get {
+            let rawValue = UserDefaults.standard.string(forKey: displayModeDefaultsKey)
+            return rawValue.flatMap(DisplayMode.init(rawValue:)) ?? .auto
+        }
+        set {
+            UserDefaults.standard.set(newValue.rawValue, forKey: displayModeDefaultsKey)
+        }
+    }
+
+    private func resolvedDisplayMode(for image: NSImage) -> DisplayMode {
+        let mode = displayMode
+        if mode != .auto { return mode }
+        return image.size.width + 8 > preferredMaxWidth ? .compact : .detail
+    }
+
+    private func showDetail(_ image: NSImage) {
+        statusItem.length = image.size.width + 8
+        statusItem.button?.imagePosition = .imageOnly
+        statusItem.button?.imageScaling = .scaleNone
+        statusItem.button?.image = image
+        statusItem.button?.title = ""
+        statusItem.button?.attributedTitle = NSAttributedString()
+    }
+
+    private func showCompact() {
+        statusItem.length = NSStatusItem.variableLength
+        statusItem.button?.image = nil
+        statusItem.button?.imagePosition = .noImage
+        statusItem.button?.title = ""
+        statusItem.button?.attributedTitle = compactTitle()
+    }
+
+    private func compactTitle() -> NSAttributedString {
+        let color = snapshot?.worstRemaining.map(color) ?? NSColor.labelColor
+        return NSAttributedString(
+            string: snapshot?.compactTitle ?? "C--",
+            attributes: [
+                .font: NSFont.monospacedSystemFont(ofSize: 10, weight: .regular),
+                .foregroundColor: color
+            ]
+        )
+    }
+
+    private func color(for remaining: Int) -> NSColor {
+        if remaining > 60 { return .systemGreen }
+        if remaining >= 20 { return .systemOrange }
+        return .systemRed
     }
 
     private func makeMenu() -> NSMenu {
@@ -309,6 +380,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         menu.addItem(.separator())
+        let displayItem = NSMenuItem(title: "Display: \(displayMode.title)", action: nil, keyEquivalent: "")
+        let displayMenu = NSMenu()
+        for mode in DisplayMode.allCases {
+            let item = NSMenuItem(title: mode.title, action: #selector(setDisplayMode), keyEquivalent: "")
+            item.target = self
+            item.representedObject = mode.rawValue
+            item.state = displayMode == mode ? .on : .off
+            displayMenu.addItem(item)
+        }
+        menu.setSubmenu(displayMenu, for: displayItem)
+        menu.addItem(displayItem)
         menu.addItem(NSMenuItem(title: "Refresh Now", action: #selector(refreshFromMenu), keyEquivalent: "r"))
         menu.addItem(NSMenuItem(title: "Open Log Folder", action: #selector(openLogFolder), keyEquivalent: ""))
         menu.addItem(.separator())
@@ -332,6 +414,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func refreshFromMenu() {
+        refresh()
+    }
+
+    @objc private func setDisplayMode(_ sender: NSMenuItem) {
+        guard
+            let rawValue = sender.representedObject as? String,
+            let mode = DisplayMode(rawValue: rawValue)
+        else { return }
+        displayMode = mode
         refresh()
     }
 
