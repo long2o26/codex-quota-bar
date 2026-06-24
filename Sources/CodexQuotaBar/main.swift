@@ -29,6 +29,11 @@ struct Snapshot {
         return parts.isEmpty ? "Codex --" : parts.joined(separator: "  ")
     }
 
+    var compactTitle: String {
+        let parts = limits.map { "\($0.label):\($0.remaining)" }
+        return parts.isEmpty ? "C--" : parts.joined(separator: " ")
+    }
+
     var worstRemaining: Int? {
         limits.map(\.remaining).min()
     }
@@ -274,7 +279,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        statusItem.button?.imagePosition = .imageOnly
         statusItem.menu = makeMenu()
         refresh()
         timer = Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { [weak self] _ in
@@ -284,11 +288,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func refresh() {
         snapshot = reader.latest()
-        let image = art.image(for: snapshot)
-        statusItem.length = image.size.width + 8
-        statusItem.button?.image = image
+        statusItem.length = 72
+        statusItem.button?.image = nil
+        statusItem.button?.imagePosition = .noImage
+        statusItem.button?.title = snapshot?.compactTitle ?? "C--"
+        statusItem.button?.attributedTitle = statusTitle(for: snapshot)
         statusItem.button?.toolTip = snapshot?.title ?? "No Codex quota log found"
         statusItem.menu = makeMenu()
+    }
+
+    private func statusTitle(for snapshot: Snapshot?) -> NSAttributedString {
+        let text = snapshot?.compactTitle ?? "C--"
+        let color = snapshot?.worstRemaining.map(color) ?? NSColor.white
+        return NSAttributedString(
+            string: text,
+            attributes: [
+                .font: NSFont.monospacedSystemFont(ofSize: 10, weight: .regular),
+                .foregroundColor: color
+            ]
+        )
+    }
+
+    private func color(for remaining: Int) -> NSColor {
+        if remaining > 60 { return .systemGreen }
+        if remaining >= 20 { return .systemOrange }
+        return .systemRed
     }
 
     private func makeMenu() -> NSMenu {
