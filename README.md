@@ -27,6 +27,7 @@ cd codex-quota-bar
 ```
 
 This builds the app, installs it to `~/Applications/CodexQuotaBar.app`, and registers a user `LaunchAgent` so it starts after login.
+The LaunchAgent also restarts the app after abnormal exits, while a normal in-app Quit stays quit.
 
 ### Option 2: Download release zip
 
