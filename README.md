@@ -1,37 +1,31 @@
 # CodexQuotaBar
 
-A tiny macOS menu bar widget for Codex quota.
+A tiny macOS menu bar widget that shows your Codex quota at a glance.
 
-It reads local Codex session logs from `~/.codex/sessions/**/*.jsonl` and shows two compact rows:
+![CodexQuotaBar menu bar screenshot](docs/codex-quota-bar-menu.png)
+
+CodexQuotaBar reads local Codex session logs from `~/.codex/sessions/**/*.jsonl` and renders the latest quota data in the macOS menu bar:
 
 ```text
 5h  [bars]  99%  04:43
 7d  [bars]  81%  6月29日
 ```
 
-- `5h`: short quota window
-- `7d`: weekly quota window
-- bars: green `>60`, orange `20...60`, red `<20`
-- right-side time: Codex quota reset time from `rate_limits.*.resets_at`
+## Features
+
+- Two-row quota display for the short window and weekly window.
+- Color-coded bars: green `>60`, orange `20...60`, red `<20`.
+- Reset time from Codex `rate_limits.*.resets_at`.
+- Local-only: no network calls, no OpenAI or GitHub API calls.
+- Starts automatically after login through a user LaunchAgent.
+- Restarts after abnormal exits, while a normal in-app Quit stays quit.
+- Stable menu bar identity so macOS keeps its visible position after restarts.
 
 ## Install
 
-### Option 1: Build from source
+### Option 1: Download Release
 
-Requires macOS with Xcode Command Line Tools.
-
-```bash
-git clone <repo-url>
-cd codex-quota-bar
-./scripts/install.sh
-```
-
-This builds the app, installs it to `~/Applications/CodexQuotaBar.app`, and registers a user `LaunchAgent` so it starts after login.
-The LaunchAgent also restarts the app after abnormal exits, while a normal in-app Quit stays quit.
-
-### Option 2: Download release zip
-
-Download `CodexQuotaBar.zip` from the GitHub Releases page, unzip it, and open `CodexQuotaBar.app`.
+Download `CodexQuotaBar.zip` from the [latest release](https://github.com/long2o26/codex-quota-bar/releases/latest), unzip it, and open `CodexQuotaBar.app`.
 
 If macOS blocks the unsigned app:
 
@@ -40,6 +34,30 @@ xattr -dr com.apple.quarantine CodexQuotaBar.app
 open CodexQuotaBar.app
 ```
 
+### Option 2: Build From Source
+
+Requires macOS with Xcode Command Line Tools.
+
+```bash
+git clone https://github.com/long2o26/codex-quota-bar.git
+cd codex-quota-bar
+./scripts/install.sh
+```
+
+This builds the app, installs it to `~/Applications/CodexQuotaBar.app`, and registers:
+
+```text
+~/Library/LaunchAgents/com.long.codex-quota-bar.plist
+```
+
+## Display Modes
+
+Open the menu bar item to switch display mode:
+
+- `Detail`: full v0.1.1-style two-row UI.
+- `Auto`: prefer detail, fall back when the item is too wide.
+- `Compact`: short text fallback for crowded menu bars.
+
 ## Commands
 
 Build:
@@ -47,6 +65,12 @@ Build:
 ```bash
 ./scripts/build.sh
 open ./build/CodexQuotaBar.app
+```
+
+Install or update the LaunchAgent:
+
+```bash
+./scripts/install.sh
 ```
 
 Check parsed quota without opening the menu bar app:
@@ -67,13 +91,6 @@ Uninstall:
 ./scripts/uninstall.sh
 ```
 
-## Notes
-
-- The app is local-only. It reads Codex logs; it does not call OpenAI or GitHub.
-- The number changes after Codex writes a new `token_count` event.
-- The menu bar item has a stable `autosaveName`, so macOS can remember its position after CodexQuotaBar restarts.
-- The app is unsigned. Building from source is the smoothest install path.
-
 ## Troubleshooting
 
 If the menu bar item does not appear, check whether Codex has written quota logs:
@@ -82,10 +99,12 @@ If the menu bar item does not appear, check whether Codex has written quota logs
 ./build/CodexQuotaBar.app/Contents/MacOS/CodexQuotaBar --print-once
 ```
 
-If the process is running but the item disappears after a CodexQuotaBar restart, macOS may have treated an unnamed status item as a new anonymous menu bar icon and placed it in the hidden area. Current versions set a stable status item name so macOS can keep the item in the visible position after restart.
+If the process is running but the item disappears after restart, older builds may have been treated by macOS as an anonymous status item and placed in a hidden menu bar area. Current builds set a stable `autosaveName` so macOS can remember the visible position after restart.
 
 If there are two menu bar items, quit the temporary build and keep the installed app:
 
 ```bash
 pkill -f "/build/CodexQuotaBar.app"
 ```
+
+If you want the full two-row UI but your menu bar manager hides it, switch to `Display: Detail` and drag the item into the visible area once. macOS should remember it afterwards.
