@@ -78,7 +78,7 @@ final class StatusArt {
         NSGraphicsContext.current?.imageInterpolation = .high
 
         for (index, limit) in rows.enumerated() {
-            let y = index == 0 ? CGFloat(11) : CGFloat(0)
+            let y = rows.count == 1 ? CGFloat(5) : (index == 0 ? CGFloat(11) : CGFloat(0))
             draw(limit, at: CGPoint(x: padding.width, y: y))
         }
 
@@ -296,6 +296,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         statusItem.autosaveName = "CodexQuotaBarStatusItem"
+        statusItem.isVisible = true
         statusItem.menu = makeMenu()
         refresh()
         timer = Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { [weak self] _ in
