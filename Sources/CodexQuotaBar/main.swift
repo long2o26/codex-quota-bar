@@ -18,6 +18,7 @@ struct Limit {
 struct Snapshot {
     let timestamp: String
     let sourcePath: String
+    let limitID: String?
     let planType: String?
     let primary: Limit?
     let secondary: Limit?
@@ -178,6 +179,7 @@ final class QuotaReader {
             for line in text.split(separator: "\n").reversed() {
                 guard line.contains("\"token_count\""), line.contains("\"rate_limits\"") else { continue }
                 guard let snapshot = parse(String(line), sourcePath: file.path) else { continue }
+                guard snapshot.limitID == nil || snapshot.limitID == "codex" else { continue }
                 if best == nil || snapshot.timestamp > best!.timestamp {
                     best = snapshot
                 }
@@ -241,6 +243,7 @@ final class QuotaReader {
         return Snapshot(
             timestamp: timestamp,
             sourcePath: sourcePath,
+            limitID: rateLimits["limit_id"] as? String,
             planType: rateLimits["plan_type"] as? String,
             primary: primary,
             secondary: secondary
@@ -284,6 +287,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let art = StatusArt()
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private var timer: Timer?
+    private var visibilityTimer: Timer?
     private var snapshot: Snapshot?
     private let displayModeDefaultsKey = "displayMode"
     private let preferredMaxWidth: CGFloat = 110
@@ -302,9 +306,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         timer = Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { [weak self] _ in
             self?.refresh()
         }
+        visibilityTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
+            self?.statusItem.isVisible = true
+        }
     }
 
     private func refresh() {
+        statusItem.isVisible = true
         snapshot = reader.latest()
         let image = art.image(for: snapshot)
         if resolvedDisplayMode(for: image) == .compact {
