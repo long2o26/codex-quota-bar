@@ -4,7 +4,7 @@ A tiny macOS menu bar widget that shows your Codex quota at a glance.
 
 ![CodexQuotaBar menu bar screenshot](docs/codex-quota-bar-menu.png)
 
-CodexQuotaBar reads local Codex session logs from `~/.codex/sessions/**/*.jsonl` and renders the latest quota data in the macOS menu bar:
+CodexQuotaBar queries the locally installed Codex CLI for current rate limits and renders them in the macOS menu bar. If the live query is temporarily unavailable, it keeps the last successful value and falls back to local session logs in `~/.codex/sessions/**/*.jsonl`.
 
 ```text
 5h  [bars]  99%  04:43
@@ -15,8 +15,9 @@ CodexQuotaBar reads local Codex session logs from `~/.codex/sessions/**/*.jsonl`
 
 - Two-row quota display for the short window and weekly window.
 - Color-coded bars: green `>60`, orange `20...60`, red `<20`.
-- Reset time from Codex `rate_limits.*.resets_at`.
-- Local-only: no network calls, no OpenAI or GitHub API calls.
+- Reset time reported by Codex.
+- Uses your existing local Codex installation and login; no extra API key or third-party service.
+- Refreshes every 15 seconds without blocking the menu bar UI.
 - Starts automatically after login through a user LaunchAgent.
 - Restarts after abnormal exits, while a normal in-app Quit stays quit.
 - Stable menu bar identity so macOS keeps its visible position after restarts.
@@ -36,7 +37,7 @@ open CodexQuotaBar.app
 
 ### Option 2: Build From Source
 
-Requires macOS with Xcode Command Line Tools.
+Requires macOS, a working Codex CLI login, and Xcode Command Line Tools.
 
 ```bash
 git clone https://github.com/long2o26/codex-quota-bar.git
@@ -93,7 +94,7 @@ Uninstall:
 
 ## Troubleshooting
 
-If the menu bar item does not appear, check whether Codex has written quota logs:
+If the menu bar item does not appear or refresh, check the value returned through Codex:
 
 ```bash
 ./build/CodexQuotaBar.app/Contents/MacOS/CodexQuotaBar --print-once

@@ -165,6 +165,7 @@ final class QuotaReader {
     private let sessionsRoot: URL
     private let maxFiles = 20
     private let tailBytes: UInt64 = 2 * 1024 * 1024
+    private var lastLiveSnapshot: Snapshot?
 
     init(sessionsRoot: URL = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent(".codex/sessions")) {
@@ -172,6 +173,84 @@ final class QuotaReader {
     }
 
     func latest() -> Snapshot? {
+        if let snapshot = liveSnapshot() {
+            lastLiveSnapshot = snapshot
+            return snapshot
+        }
+        return lastLiveSnapshot ?? latestFromLogs()
+    }
+
+    private func liveSnapshot() -> Snapshot? {
+        let candidates = [
+            FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".local/bin/codex"),
+            URL(fileURLWithPath: "/opt/homebrew/bin/codex"),
+            URL(fileURLWithPath: "/usr/local/bin/codex")
+        ]
+        guard let executable = candidates.first(where: { FileManager.default.isExecutableFile(atPath: $0.path) }) else {
+            return nil
+        }
+
+        let process = Process()
+        let input = Pipe()
+        let output = Pipe()
+        process.executableURL = executable
+        process.arguments = ["app-server", "--listen", "stdio://"]
+        process.standardInput = input
+        process.standardOutput = output
+        process.standardError = FileHandle.nullDevice
+
+        do {
+            try process.run()
+            let requests = [
+                #"{"id":1,"method":"initialize","params":{"clientInfo":{"name":"codex-quota-bar","version":"0.1"}}}"#,
+                #"{"method":"initialized"}"#,
+                #"{"id":2,"method":"account/rateLimits/read","params":null}"#
+            ].joined(separator: "\n") + "\n"
+            try input.fileHandleForWriting.write(contentsOf: Data(requests.utf8))
+        } catch {
+            process.terminate()
+            return nil
+        }
+
+        let watchdog = DispatchWorkItem { [weak process] in
+            if process?.isRunning == true { process?.terminate() }
+        }
+        DispatchQueue.global().asyncAfter(deadline: .now() + 3, execute: watchdog)
+        defer {
+            watchdog.cancel()
+            try? input.fileHandleForWriting.close()
+            if process.isRunning { process.terminate() }
+        }
+
+        var data = Data()
+        while true {
+            let chunk = output.fileHandleForReading.availableData
+            guard !chunk.isEmpty else { return nil }
+            data.append(chunk)
+            if let snapshot = parseLiveResponse(data) { return snapshot }
+        }
+    }
+
+    private func parseLiveResponse(_ data: Data) -> Snapshot? {
+        guard let text = String(data: data, encoding: .utf8) else { return nil }
+        for line in text.split(separator: "\n") {
+            guard
+                let data = line.data(using: .utf8),
+                let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                number(object["id"]) == 2,
+                let result = object["result"] as? [String: Any]
+            else { continue }
+
+            let byID = result["rateLimitsByLimitId"] as? [String: Any]
+            let rateLimits = (byID?["codex"] as? [String: Any])
+                ?? (result["rateLimits"] as? [String: Any])
+            guard let rateLimits else { continue }
+            return snapshot(from: rateLimits, timestamp: ISO8601DateFormatter().string(from: Date()), sourcePath: "codex app-server")
+        }
+        return nil
+    }
+
+    private func latestFromLogs() -> Snapshot? {
         let files = recentLogFiles()
         var best: Snapshot?
         for file in files {
@@ -236,6 +315,10 @@ final class QuotaReader {
             ?? (object["rate_limits"] as? [String: Any])
         guard let rateLimits else { return nil }
 
+        return snapshot(from: rateLimits, timestamp: timestamp, sourcePath: sourcePath)
+    }
+
+    private func snapshot(from rateLimits: [String: Any], timestamp: String, sourcePath: String) -> Snapshot? {
         let primary = parseLimit(rateLimits["primary"] as? [String: Any])
         let secondary = parseLimit(rateLimits["secondary"] as? [String: Any])
         guard primary != nil || secondary != nil else { return nil }
@@ -243,8 +326,8 @@ final class QuotaReader {
         return Snapshot(
             timestamp: timestamp,
             sourcePath: sourcePath,
-            limitID: rateLimits["limit_id"] as? String,
-            planType: rateLimits["plan_type"] as? String,
+            limitID: (rateLimits["limit_id"] ?? rateLimits["limitId"]) as? String,
+            planType: (rateLimits["plan_type"] ?? rateLimits["planType"]) as? String,
             primary: primary,
             secondary: secondary
         )
@@ -253,11 +336,11 @@ final class QuotaReader {
     private func parseLimit(_ object: [String: Any]?) -> Limit? {
         guard
             let object,
-            let used = number(object["used_percent"]),
-            let minutes = number(object["window_minutes"])
+            let used = number(object["used_percent"] ?? object["usedPercent"]),
+            let minutes = number(object["window_minutes"] ?? object["windowDurationMins"])
         else { return nil }
 
-        let resetDate = number(object["resets_at"]).map { Date(timeIntervalSince1970: TimeInterval($0)) }
+        let resetDate = number(object["resets_at"] ?? object["resetsAt"]).map { Date(timeIntervalSince1970: TimeInterval($0)) }
         return Limit(used: Int(used.rounded()), windowMinutes: Int(minutes.rounded()), resetsAt: resetDate)
     }
 
@@ -286,8 +369,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let reader = QuotaReader()
     private let art = StatusArt()
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+    private let refreshQueue = DispatchQueue(label: "com.long.codex-quota-bar.refresh")
     private var timer: Timer?
     private var visibilityTimer: Timer?
+    private var isRefreshing = false
     private var snapshot: Snapshot?
     private let displayModeDefaultsKey = "displayMode"
     private let preferredMaxWidth: CGFloat = 110
@@ -313,7 +398,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func refresh() {
         statusItem.isVisible = true
-        snapshot = reader.latest()
+        guard !isRefreshing else { return }
+        isRefreshing = true
+        refreshQueue.async { [weak self] in
+            guard let self else { return }
+            let snapshot = self.reader.latest()
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                self.isRefreshing = false
+                self.show(snapshot)
+            }
+        }
+    }
+
+    private func show(_ snapshot: Snapshot?) {
+        self.snapshot = snapshot
         let image = art.image(for: snapshot)
         if resolvedDisplayMode(for: image) == .compact {
             showCompact()
