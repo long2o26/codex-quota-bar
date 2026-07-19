@@ -177,7 +177,9 @@ final class QuotaReader {
             lastLiveSnapshot = snapshot
             return snapshot
         }
-        return lastLiveSnapshot ?? latestFromLogs()
+        guard let cached = lastLiveSnapshot else { return latestFromLogs() }
+        guard let logged = latestFromLogs() else { return cached }
+        return logged.timestamp > cached.timestamp ? logged : cached
     }
 
     private func liveSnapshot() -> Snapshot? {
