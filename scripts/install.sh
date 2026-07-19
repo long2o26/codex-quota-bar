@@ -25,7 +25,9 @@ cat > "$PLIST" <<PLIST
   <string>com.long.codex-quota-bar</string>
   <key>ProgramArguments</key>
   <array>
-    <string>$APP_EXEC</string>
+    <string>/bin/zsh</string>
+    <string>-c</string>
+    <string>unset XPC_SERVICE_NAME; exec "$APP_EXEC"</string>
   </array>
   <key>RunAtLoad</key>
   <true/>
@@ -36,6 +38,8 @@ cat > "$PLIST" <<PLIST
   </dict>
   <key>LimitLoadToSessionType</key>
   <string>Aqua</string>
+  <key>ProcessType</key>
+  <string>Interactive</string>
 </dict>
 </plist>
 PLIST
